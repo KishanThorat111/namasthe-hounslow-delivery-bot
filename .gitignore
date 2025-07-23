@@ -1,0 +1,21 @@
+# Python
+pycache/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+pip-selfcheck.json
+
+# Environment variables
+.env
+
+# Google credentials
+credentials.json
+
+# IDE settings
+.idea/
+.vscode/
+
+

@@ -1,0 +1,8 @@
+python-telegram-bot[job-queue]
+google-generativeai
+gspread
+google-auth-oauthlib
+geopy
+python-dotenv
+pandas
+openpyxl
