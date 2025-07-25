@@ -1,0 +1,23 @@
+# kubernetes/deployment.yml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: namasthe-bot-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: namasthe-bot
+  template:
+    metadata:
+      labels:
+        app: namasthe-bot
+    spec:
+      imagePullSecrets:
+      - name: dockerhub-creds
+      containers:
+      - name: namasthe-bot
+        image: kishanthorat111/namasthe-bot:latest
+        envFrom:
+          - secretRef:
+              name: bot-secrets

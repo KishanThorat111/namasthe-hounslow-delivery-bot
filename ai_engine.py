@@ -341,16 +341,132 @@
 
 
 
-# ai_engine.py
+
+# # ai_engine.py Working Single bot
+# import google.generativeai as genai
+# import os
+# import json
+
+# # Direct imports
+# from data_manager import get_menu_as_string
+# import config
+
+# # --- Lazy Initialization of the Model ---
+# model = None
+
+# def initialize_model():
+#     """Initializes and configures the Gemini model."""
+#     global model
+#     if model is None:
+#         try:
+#             GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+#             if not GEMINI_API_KEY:
+#                 raise ValueError("GEMINI_API_KEY not found in environment variables.")
+            
+#             genai.configure(api_key=GEMINI_API_KEY)
+#             model = genai.GenerativeModel('gemini-1.5-flash')
+#             print("🤖 Gemini model initialized successfully.")
+#         except Exception as e:
+#             print(f"❌ CRITICAL ERROR: Could not configure Gemini API: {e}")
+
+# def get_ai_interpretation(chat_history, user_message, current_state):
+#     """
+#     Uses the Gemini API to interpret the user's message based on the conversation's current state.
+#     """
+#     initialize_model()
+
+#     if not model:
+#         return {"intent": "ERROR", "reply": "I'm having trouble connecting to my brain right now. Please try again."}
+        
+#     # The prompt now changes dynamically based on the bot's current state
+#     # if current_state == config.GETTING_NAME:
+#     if current_state == config.GETTING_NAME_AND_PHONE:
+#         system_prompt = f"""
+#         You are "Namaste-Bot" 🤖, an AI assistant for "{config.RESTAURANT_NAME}".
+#         You have just asked the user for their full name. Analyze their response.
+#         Your persona is friendly and forgiving of typos.
+        
+#         ## Your Task & Response Format
+#         Determine if the user's message is a plausible name or if it's chit-chat/a question.
+#         Respond ONLY with a valid JSON object.
+
+#         1. **Intent: "PROVIDE_NAME"** - The user provided something that looks like a name.
+#            - JSON: `{{"intent": "PROVIDE_NAME", "payload": "Kishan Thorat"}}`
+
+#         2. **Intent: "CHITCHAT"** - The user is asking a question or making small talk instead of giving a name.
+#            - JSON: `{{"intent": "CHITCHAT", "reply": "I'm doing great, thanks for asking! To get your order started, I'll just need your full name please."}}`
+#         """
+#     elif current_state == config.GETTING_ADDRESS:
+#         system_prompt = f"""
+#         You are "Namaste-Bot" 🤖, an AI assistant for "{config.RESTAURANT_NAME}".
+#         You have just asked the user for their delivery address. Analyze their response.
+#         Your persona is friendly and forgiving of typos.
+        
+#         ## Your Task & Response Format
+#         Determine if the user's message is a plausible address or if it's chit-chat/a question.
+#         Respond ONLY with a valid JSON object.
+
+#         1. **Intent: "PROVIDE_ADDRESS"** - The user provided something that looks like an address.
+#            - JSON: `{{"intent": "PROVIDE_ADDRESS", "payload": "5A Smithy LN, Hounslow, TW3 1EY"}}`
+
+#         2. **Intent: "CHITCHAT"** - The user is asking a question or making small talk.
+#            - JSON: `{{"intent": "CHITCHAT", "reply": "That's an interesting question! To continue, could you please provide your full delivery address and postcode?"}}`
+#         """
+#     elif current_state == config.AWAITING_PAYMENT_CONFIRMATION:
+#         system_prompt = f"""
+#         You are "Namaste-Bot" 🤖. You have just shown the user the final bill and payment details. Analyze their response.
+#         Your persona is polite but firm about payment.
+#         Determine if the user is confirming payment or asking something else.
+#         Respond ONLY with a valid JSON object.
+#         1. **Intent: "CONFIRM_PAYMENT"**: User says "payment done", "paid", "sent", etc.
+#            - JSON: `{{"intent": "CONFIRM_PAYMENT"}}`
+#         2. **Intent: "CHITCHAT"**: User is asking for a discount, making a comment, or asking a question.
+#            - JSON (for "can I get it free?"): `{{"intent": "CHITCHAT", "reply": "I appreciate you asking, but unfortunately, I can't offer discounts. Please type 'payment done' to confirm your order, or /cancel to start over."}}`
+#         """
+#     else: # This is the main ordering prompt
+#         system_prompt = f"""
+#         You are "Namaste-Bot" 🤖, a friendly and witty AI waiter for "{config.RESTAURANT_NAME}".
+#         The user is now ordering. Your goal is to be helpful, engaging, and to understand their order even with typos.
+        
+#         ## Your Tools:
+#         - Menu: {get_menu_as_string()}
+
+#         ## Intents & Response Format
+#         Respond ONLY with a valid JSON object with intents: "ADD_TO_ORDER", "QUERY_MENU", "CONFIRM_ORDER", "CHITCHAT".
+#         """
+
+#     full_prompt = system_prompt + "\n\n## Conversation History:\n" + "\n".join(chat_history) + f"\n\n## User's Latest Message:\n{user_message}"
+
+#     try:
+#         response = model.generate_content(full_prompt)
+#         cleaned_response = response.text.strip().replace("```json", "").replace("```", "")
+#         return json.loads(cleaned_response)
+#     except Exception as e:
+#         print(f"❌ Error during Gemini API call or JSON parsing: {e}")
+#         return {"intent": "ERROR", "reply": "My apologies, I got a little tangled up there. Could you please rephrase that?"}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 import google.generativeai as genai
 import os
 import json
-
-# Direct imports
 from data_manager import get_menu_as_string
 import config
 
-# --- Lazy Initialization of the Model ---
 model = None
 
 def initialize_model():
@@ -358,11 +474,10 @@ def initialize_model():
     global model
     if model is None:
         try:
-            GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-            if not GEMINI_API_KEY:
+            if not config.GEMINI_API_KEY:
                 raise ValueError("GEMINI_API_KEY not found in environment variables.")
             
-            genai.configure(api_key=GEMINI_API_KEY)
+            genai.configure(api_key=config.GEMINI_API_KEY)
             model = genai.GenerativeModel('gemini-1.5-flash')
             print("🤖 Gemini model initialized successfully.")
         except Exception as e:
@@ -380,43 +495,58 @@ def get_ai_interpretation(chat_history, user_message, current_state):
     if current_state == config.GETTING_NAME_AND_PHONE:
         system_prompt = f"""
         You are "Namaste-Bot" 🤖. You have just asked the user for their full name and mobile number.
-        Analyze their response. Your persona is friendly and forgiving of typos.
-        
-        ## Your Task & Response Format
-        Extract the full name and a plausible UK mobile number. If either is missing, ask for it.
-        Respond ONLY with a valid JSON object.
+        Your task is to extract the full name and a plausible UK mobile number from the user's response.
+        Your persona is friendly and forgiving of typos or different formats (e.g., +44, 07...).
 
-        1. **Intent: "PROVIDE_DETAILS"** - The user provided both a name and a number.
-           - JSON: `{{"intent": "PROVIDE_DETAILS", "name": "Kishan Thorat", "phone": "07123456789"}}`
+        ## Rules & Response Format
+        - A name should have at least two parts.
+        - A phone number can be in any valid UK format.
+        - If the user provides both in one message, extract both.
+        - If the user provides only one, ask for the missing piece.
+        - Respond ONLY with a valid JSON object.
 
-        2. **Intent: "CHITCHAT"** - The user is asking a question or making small talk.
-           - JSON: `{{"intent": "CHITCHAT", "reply": "I'm doing great, thanks! To get your order started, I'll just need your full name and mobile number please."}}`
-        
-        3. **Intent: "MISSING_INFO"** - The user provided some info but not all.
-           - JSON: `{{"intent": "MISSING_INFO", "reply": "Thanks for that. Could you also provide your mobile number please?"}}`
+        ## Examples
+        - User says: "Kishan Thorat, 07123456789" -> `{{"intent": "PROVIDE_DETAILS", "name": "Kishan Thorat", "phone": "07123456789"}}`
+        - User says: "My name is Kishan" -> `{{"intent": "MISSING_INFO", "reply": "Thanks, Kishan. Could you also provide your mobile number please?"}}`
+        - User says: "Here is my number +441234567890" -> `{{"intent": "MISSING_INFO", "reply": "Thanks for your number. Could you also provide your full name please?"}}`
+        - User says: "how are you" -> `{{"intent": "CHITCHAT", "reply": "I'm doing great, thanks! To get your order started, I'll just need your full name and mobile number please."}}`
+
+        ## Intents
+        1. **"PROVIDE_DETAILS"**: Both name and number were found.
+        2. **"MISSING_INFO"**: Only one piece of information was found.
+        3. **"CHITCHAT"**: The user is making small talk.
         """
     elif current_state == config.GETTING_ADDRESS:
         system_prompt = f"""
         You are "Namaste-Bot" 🤖. You have just asked for the delivery address. Analyze their response.
         Determine if the user's message is a plausible address or if it's chit-chat.
         Respond ONLY with a valid JSON object.
-        1. **Intent: "PROVIDE_ADDRESS"**: `{{"intent": "PROVIDE_ADDRESS", "payload": "5A Smithy LN, Hounslow, TW3 1EY"}}`
-        2. **Intent: "CHITCHAT"**: `{{"intent": "CHITCHAT", "reply": "That's an interesting question! To continue, could you please provide your full delivery address?"}}`
-        """
-    elif current_state == config.AWAITING_PAYMENT_CONFIRMATION:
-        system_prompt = f"""
-        You are "Namaste-Bot" 🤖. You have just shown the final bill. Analyze their response.
-        Determine if the user is confirming payment or asking something else.
-        Respond ONLY with a valid JSON object.
-        1. **Intent: "CONFIRM_PAYMENT"**: `{{"intent": "CONFIRM_PAYMENT"}}`
-        2. **Intent: "CHITCHAT"**: `{{"intent": "CHITCHAT", "reply": "I appreciate you asking, but I can't offer discounts. Please type 'payment done' to confirm, or /cancel."}}`
+        1. **Intent: "PROVIDE_ADDRESS"**: {{"intent": "PROVIDE_ADDRESS", "payload": "5A Smithy LN, Hounslow, TW3 1EY"}}
+        2. **Intent: "CHITCHAT"**: {{"intent": "CHITCHAT", "reply": "That's an interesting question! To continue, could you please provide your full delivery address?"}}
         """
     else: # This is the main ordering prompt
+        menu_string = get_menu_as_string()
         system_prompt = f"""
         You are "Namaste-Bot" 🤖, a friendly and witty AI waiter for "{config.RESTAURANT_NAME}".
-        The user is now ordering. Your goal is to be helpful and understand their order even with typos.
-        Your Tools: Menu: {get_menu_as_string()}
-        Respond ONLY with a valid JSON object with intents: "ADD_TO_ORDER", "QUERY_MENU", "CONFIRM_ORDER", "CHITCHAT".
+        The user is now ordering food. Your primary goal is to accurately identify food items and quantities from their text message.
+        - You can handle typos (e.g., "chiken biryany" -> "Chicken Biryani").
+        - If a user just says "yes" or "confirm order", understand they want to proceed to checkout.
+        - Your Tool: Menu (use this to validate items): {menu_string}
+
+        ## Your Task & Response Format
+        Analyze the user's message and respond ONLY with a valid JSON object using one of these intents:
+
+        1. **Intent: "ADD_TO_ORDER"**: The user wants to add one or more items to their cart.
+           - **Required JSON**: `{{"intent": "ADD_TO_ORDER", "reply": "Great choices! I've added 2 Chicken Tikkas and 1 Lamb Rogan Josh to your order.", "items": [{{"name": "Chicken Tikka", "quantity": 2}}, {{"name": "Lamb Rogan Josh", "quantity": 1}}]}}`
+
+        2. **Intent: "QUERY_MENU"**: The user is asking a question about the menu (e.g., "what starters do you have?", "is the madras spicy?").
+           - **Required JSON**: `{{"intent": "QUERY_MENU", "reply": "Our Madras is quite spicy! For starters, we have Samosas, Onion Bhajis, and more. You can also browse using the menu buttons."}}`
+
+        3. **Intent: "CONFIRM_ORDER"**: The user is ready to check out (e.g., "that's all", "checkout", "proceed", "yes").
+           - **Required JSON**: `{{"intent": "CONFIRM_ORDER", "reply": "Perfect! Let me just get your cart ready for you to review."}}`
+           
+        4. **Intent: "CHITCHAT"**: The user is making small talk not related to the order.
+           - **Required JSON**: `{{"intent": "CHITCHAT", "reply": "I'm happy to chat, but I'm even happier to take your order! What can I get for you?"}}`
         """
 
     full_prompt = system_prompt + "\n\n## Conversation History:\n" + "\n".join(chat_history) + f"\n\n## User's Latest Message:\n{user_message}"

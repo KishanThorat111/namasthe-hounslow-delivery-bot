@@ -285,19 +285,110 @@
 
 
 
-# data_manager.py 
+# # data_manager.py Single Working Bot
+# import pandas as pd
+# import os
+# import json
+
+# # --- Private variables to store the loaded menu in different formats ---
+# _menu_df = None
+# _menu_as_string = None
+# _menu_as_dict = None
+
+# def _initialize_menu():
+#     """
+#     Internal function to load and process the menu from the correctly structured Excel file.
+#     """
+#     global _menu_df, _menu_as_string, _menu_as_dict
+    
+#     if _menu_df is not None:
+#         return
+
+#     filename = 'namasthe_hounslow_menu.xlsx'
+#     file_path = os.path.join(os.path.dirname(__file__), 'data', filename)
+    
+#     try:
+#         if not os.path.exists(file_path):
+#             raise FileNotFoundError
+
+#         df = pd.read_excel(file_path)
+#         df.columns = [str(col).strip().lower() for col in df.columns]
+        
+#         if 'item name' in df.columns:
+#             df.rename(columns={'item name': 'itemname'}, inplace=True)
+
+#         required_columns = ['category', 'itemname', 'price']
+#         for col in required_columns:
+#             if col not in df.columns:
+#                 raise KeyError(f"The required column '{col}' was not found in your Excel file. Please check the spelling and structure.")
+
+#         df['price'] = pd.to_numeric(df['price'], errors='coerce')
+#         df.dropna(subset=['itemname', 'price', 'category'], inplace=True)
+
+#         _menu_df = df
+#         _menu_as_string = _menu_df.to_json(orient='records', indent=4)
+#         _menu_as_dict = _menu_df.groupby('category').apply(lambda x: x.to_dict('records')).to_dict()
+
+#         print(f"✅ Menu loaded and processed successfully from {filename}")
+        
+#     except Exception as e:
+#         print(f"❌ ERROR while loading menu: {e}")
+
+# def get_menu_as_string():
+#     """Returns the full menu as a JSON formatted string for the AI."""
+#     return _menu_as_string
+
+# def get_menu_as_dict():
+#     """Returns the menu as a dictionary, grouped by category."""
+#     return _menu_as_dict
+
+# def get_item_details(item_name):
+#     """Finds a specific item in the menu DataFrame and returns its details."""
+#     if _menu_df is None:
+#         return None
+#     item = _menu_df[_menu_df['itemname'].str.lower() == item_name.lower()]
+#     if not item.empty:
+#         return item.iloc[0].to_dict()
+#     return None
+
+# # --- Initialize the menu when the module is first imported ---
+# _initialize_menu()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 import pandas as pd
 import os
 import json
 
-# --- Private variables to store the loaded menu in different formats ---
 _menu_df = None
 _menu_as_string = None
 _menu_as_dict = None
 
 def _initialize_menu():
     """
-    Internal function to load and process the menu from the correctly structured Excel file.
+    Internal function to load and process the menu from the Excel file.
     """
     global _menu_df, _menu_as_string, _menu_as_dict
     
@@ -309,30 +400,39 @@ def _initialize_menu():
     
     try:
         if not os.path.exists(file_path):
-            raise FileNotFoundError
+            raise FileNotFoundError(f"Menu file not found at {file_path}")
 
         df = pd.read_excel(file_path)
-        df.columns = [str(col).strip().lower() for col in df.columns]
+        df.columns = [str(col).strip().lower().replace(' ', '_') for col in df.columns]
         
-        if 'item name' in df.columns:
-            df.rename(columns={'item name': 'itemname'}, inplace=True)
+        if 'item_name' in df.columns:
+            df.rename(columns={'item_name': 'itemname'}, inplace=True)
 
         required_columns = ['category', 'itemname', 'price']
         for col in required_columns:
             if col not in df.columns:
-                raise KeyError(f"The required column '{col}' was not found in your Excel file. Please check the spelling and structure.")
+                raise KeyError(f"The required column '{col}' was not found in your Excel file.")
 
         df['price'] = pd.to_numeric(df['price'], errors='coerce')
         df.dropna(subset=['itemname', 'price', 'category'], inplace=True)
+        df['itemname'] = df['itemname'].astype(str).str.strip()
+        df['category'] = df['category'].astype(str).str.strip()
 
         _menu_df = df
-        _menu_as_string = _menu_df.to_json(orient='records', indent=4)
-        _menu_as_dict = _menu_df.groupby('category').apply(lambda x: x.to_dict('records')).to_dict()
+        _menu_as_string = _menu_df.to_json(orient='records', indent=2)
+        
+        _menu_as_dict = {
+            cat: data.to_dict('records') 
+            for cat, data in _menu_df.groupby('category')
+        }
 
         print(f"✅ Menu loaded and processed successfully from {filename}")
         
     except Exception as e:
-        print(f"❌ ERROR while loading menu: {e}")
+        print(f"❌ CRITICAL ERROR while loading menu: {e}")
+        _menu_df = pd.DataFrame()
+        _menu_as_dict = {}
+        _menu_as_string = "[]"
 
 def get_menu_as_string():
     """Returns the full menu as a JSON formatted string for the AI."""
@@ -343,13 +443,17 @@ def get_menu_as_dict():
     return _menu_as_dict
 
 def get_item_details(item_name):
-    """Finds a specific item in the menu DataFrame and returns its details."""
-    if _menu_df is None:
+    """
+    Finds a specific item in the menu DataFrame (case-insensitive) and returns its details.
+    """
+    if _menu_df is None or _menu_df.empty: 
         return None
+        
     item = _menu_df[_menu_df['itemname'].str.lower() == item_name.lower()]
+    
     if not item.empty:
         return item.iloc[0].to_dict()
+        
     return None
 
-# --- Initialize the menu when the module is first imported ---
 _initialize_menu()
