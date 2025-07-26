@@ -1878,7 +1878,6 @@
 
 
 
-
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, constants
 from telegram.ext import ContextTypes, ConversationHandler
 from telegram.error import BadRequest
@@ -1890,8 +1889,6 @@ import database_manager as db
 import services
 import ai_engine
 from data_manager import get_menu_as_dict, get_item_details
-from geopy.geocoders import Nominatim
-from geopy.distance import geodesic
 
 # --- Helper Functions ---
 def get_cart_summary(cart):
@@ -1907,29 +1904,8 @@ def get_cart_summary(cart):
     summary += f"\n*Subtotal: £{total_price:.2f}*"
     return summary, total_price
 
-def get_distance_in_miles(clean_address):
-    """Calculates delivery distance using a clean, single-line address."""
-    geolocator = Nominatim(user_agent="namaste_hounslow_bot")
-    try:
-        restaurant_location = geolocator.geocode(config.RESTAURANT_POSTCODE, country_codes="GB")
-        customer_location = geolocator.geocode(clean_address, country_codes="GB")
-        
-        if not restaurant_location or not customer_location:
-            print(f"GEOCODING FAILED: Could not find coordinates for '{config.RESTAURANT_POSTCODE}' or '{clean_address}'.")
-            return None
-            
-        distance = geodesic(
-            (restaurant_location.latitude, restaurant_location.longitude),
-            (customer_location.latitude, customer_location.longitude)
-        ).miles
-        print(f"GEOCODING SUCCESS: Distance to '{clean_address}' is {distance:.2f} miles.")
-        return distance
-    except Exception as e:
-        print(f"GEOCODING ERROR: An unexpected error occurred: {e}")
-        return None
-
 def build_menu_keyboard():
-    # ... (This function is unchanged) ...
+    """Creates the main menu keyboard with categories."""
     menu = get_menu_as_dict()
     if not menu: return None
     emoji_map = {"BREAKFAST": "🥞", "STARTERS": "🍢", "CURRIES": "🍛", "TANDOORI": "🔥", "BIRYANI": "🍚", "RICE/NOODLES": "🍜", "BREADS": "🍞", "WEEKEND SPECIALS": "⭐", "DESSERTS": "🍰"}
@@ -1939,7 +1915,7 @@ def build_menu_keyboard():
     return InlineKeyboardMarkup(keyboard)
 
 def build_items_keyboard(category):
-    # ... (This function is unchanged) ...
+    """Creates a keyboard for items within a category."""
     menu = get_menu_as_dict()
     items = menu.get(category, [])
     keyboard = [[InlineKeyboardButton(f"{item['itemname']} - £{item['price']:.2f}", callback_data=f"add_{item['itemname']}")] for item in items]
@@ -1947,7 +1923,7 @@ def build_items_keyboard(category):
     return InlineKeyboardMarkup(keyboard)
 
 def build_cart_keyboard(cart):
-    # ... (This function is unchanged) ...
+    """Creates the interactive keyboard for the shopping cart."""
     keyboard = []
     for item_name in cart.keys():
         keyboard.append([
@@ -1962,7 +1938,7 @@ def build_cart_keyboard(cart):
 # --- State Handlers ---
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    # ... (This function is unchanged) ...
+    """Starts a new conversation. Checks if the user is a returning customer."""
     print("\n--- NEW CONVERSATION STARTED ---")
     user_id = update.message.from_user.id
     customer = db.find_customer_by_id(user_id)
@@ -1995,7 +1971,6 @@ async def get_name_and_phone(update: Update, context: ContextTypes.DEFAULT_TYPE)
     """Handles the user's response for name and phone, remembering previous inputs."""
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=constants.ChatAction.TYPING)
     
-    # Check for existing data to pass to the AI
     existing_data = {}
     if context.user_data.get('full_name'):
         existing_data['name'] = context.user_data['full_name']
@@ -2010,15 +1985,11 @@ async def get_name_and_phone(update: Update, context: ContextTypes.DEFAULT_TYPE)
         user_data=existing_data if existing_data else None
     )
     
-    intent = ai_response.get("intent")
-    
-    # Update context.user_data with any new info from the AI
     if "name" in ai_response:
         context.user_data['full_name'] = ai_response["name"]
     if "phone" in ai_response:
         context.user_data['phone_number'] = ai_response["phone"]
 
-    # Now, check if we have everything
     if context.user_data.get('full_name') and context.user_data.get('phone_number'):
         await update.message.reply_text(
             f"Thank you, *{context.user_data['full_name']}*! 🙏\n\nPlease provide your *full delivery address* and postcode.",
@@ -2026,80 +1997,71 @@ async def get_name_and_phone(update: Update, context: ContextTypes.DEFAULT_TYPE)
         )
         return config.GETTING_ADDRESS
     else:
-        # If still missing info, send the AI's reply
         await update.message.reply_text(ai_response.get("reply", "I'm sorry, I need a little more information."))
         return config.GETTING_NAME_AND_PHONE
 
 async def handle_address_confirmation(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    # ... (This function is unchanged) ...
+    """Handles callback for confirming a saved address."""
     query = update.callback_query
     await query.answer()
     if query.data == 'confirm_address_yes':
+        # The address is already in user_data from the start function
         return await check_address_and_proceed(update, context, context.user_data['address'])
     else:
         await query.edit_message_text("No problem. Please provide your new delivery address.")
         return config.GETTING_ADDRESS
 
 async def get_address(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Gets and cleans a new address using the AI, then saves and checks it."""
-    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=constants.ChatAction.TYPING)
-    
-    user_message = update.message.text
-    
-    # Use the AI to parse and clean the address first
-    ai_response = ai_engine.get_ai_interpretation(
-        chat_history=[], user_message=user_message, current_state=config.GETTING_ADDRESS
-    )
-
-    if ai_response.get("intent") == "PROVIDE_ADDRESS":
-        clean_address = ai_response.get("payload")
-        context.user_data['address'] = clean_address
-        
-        customer_details = {
-            'user_id': update.message.from_user.id,
-            'full_name': context.user_data.get('full_name'),
-            'phone_number': context.user_data.get('phone_number'),
-            'address': clean_address
-        }
-        db.register_or_update_customer(**customer_details)
-        if context.job_queue:
-            context.job_queue.run_once(services.sync_customer_to_sheet, when=0, data=customer_details)
-        
-        return await check_address_and_proceed(update, context, clean_address)
-    else:
-        # Handle chit-chat
-        await update.message.reply_text(ai_response.get("reply", "I'm sorry, I didn't understand that as an address."))
-        return config.GETTING_ADDRESS
+    """Gets address and passes it to the AI distance checker."""
+    address = update.message.text
+    # We pass the raw address to the distance checker; the AI will clean and parse it.
+    return await check_address_and_proceed(update, context, address)
 
 async def check_address_and_proceed(update: Update, context: ContextTypes.DEFAULT_TYPE, address: str) -> int:
-    # ... (This function is unchanged but now receives a clean address) ...
+    """A shared function to check distance using Gemini and move to the ordering phase."""
     chat_id = update.effective_chat.id
     await context.bot.send_chat_action(chat_id=chat_id, action=constants.ChatAction.TYPING)
     
-    message_to_send = "👍 Thank you. One moment while I verify the address with our satellites... 🛰️"
+    message_to_send = "👍 Thank you. One moment while I calculate the delivery distance... 🗺️"
     if update.callback_query:
         await update.callback_query.edit_message_text(message_to_send)
     else:
         await update.message.reply_text(message_to_send)
 
-    distance = get_distance_in_miles(address)
-    
-    if distance is None:
+    # Use Gemini for robust distance calculation
+    distance_response = ai_engine.get_distance_with_gemini(
+        user_address=address,
+        restaurant_address=config.RESTAURANT_ADDRESS
+    )
+
+    if distance_response.get("status") != "SUCCESS":
+        print(f"GEMINI GEOCODING FAILED: {distance_response.get('reason')}")
         await context.bot.send_message(
             chat_id=chat_id, 
             text="I'm sorry, I couldn't verify that address. Please provide a different one, including the postcode."
         )
         return config.GETTING_ADDRESS
 
+    distance = distance_response.get("distance_miles", float('inf'))
+    
+    # Save the now-verified address to the database and session
+    context.user_data['address'] = address
+    db.register_or_update_customer(
+        user_id=update.effective_user.id,
+        full_name=context.user_data.get('full_name'),
+        phone_number=context.user_data.get('phone_number'),
+        address=address
+    )
+
     if distance > config.DELIVERY_RADIUS_MILES:
         await context.bot.send_message(
             chat_id=chat_id, 
-            text=f"We're so sorry, but you are outside our delivery radius of {config.DELIVERY_RADIUS_MILES} miles. 😥"
+            text=f"We're so sorry, but you are about {distance:.1f} miles away, which is outside our delivery radius of {config.DELIVERY_RADIUS_MILES} miles. 😥"
         )
         return ConversationHandler.END
 
     context.user_data['delivery_charge'] = 0 if distance <= config.FREE_DELIVERY_RADIUS_MILES else config.DELIVERY_CHARGE
-    delivery_message = "🎉 Great news! You qualify for *FREE delivery*." if context.user_data['delivery_charge'] == 0 else f"Excellent, you're in our delivery area! A delivery charge of *£{config.DELIVERY_CHARGE:.2f}* will apply."
+    delivery_message = f"🎉 Great news! You're about *{distance:.1f} miles* away and qualify for *FREE delivery*." if context.user_data['delivery_charge'] == 0 else f"Excellent, you're about *{distance:.1f} miles* away and in our delivery area! A delivery charge of *£{config.DELIVERY_CHARGE:.2f}* will apply."
     
     await context.bot.send_message(
         chat_id=chat_id, 
@@ -2107,9 +2069,6 @@ async def check_address_and_proceed(update: Update, context: ContextTypes.DEFAUL
         parse_mode='Markdown'
     )
     return await show_menu(update, context)
-
-# ... The rest of the functions (show_menu, checkout, handle_screenshot, etc.) are unchanged ...
-# ... I'm omitting them here for brevity but they should remain in your file ...
 
 async def show_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Displays the main menu categories."""
@@ -2216,13 +2175,13 @@ async def handle_text_order(update: Update, context: ContextTypes.DEFAULT_TYPE) 
             await update.message.reply_text(reply_text)
             return await view_cart_from_text(update, context)
         else:
-            await update.message.reply_text("I'm sorry, I couldn't find those items on our menu. Please try again or use the buttons.")
+            await update.message.reply_text("I'm sorry, I couldn't find those items on our menu.")
 
     elif intent == "CONFIRM_ORDER":
         await update.message.reply_text(reply_text)
         return await view_cart_from_text(update, context)
     
-    else: # Handles QUERY_MENU, CHITCHAT, ERROR
+    else:
         await update.message.reply_text(reply_text)
         
     return config.ORDERING

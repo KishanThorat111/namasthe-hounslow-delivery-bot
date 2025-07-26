@@ -565,8 +565,6 @@
 
 
 
-
-
 import google.generativeai as genai
 import os
 import json
@@ -591,7 +589,7 @@ def initialize_model():
 
 def get_ai_interpretation(chat_history, user_message, current_state, user_data=None):
     """
-    Uses the Gemini API to interpret the user's message based on the conversation's current state.
+    Uses the Gemini API for conversational tasks like gathering user info or parsing orders.
     """
     initialize_model()
 
@@ -599,55 +597,26 @@ def get_ai_interpretation(chat_history, user_message, current_state, user_data=N
         return {"intent": "ERROR", "reply": "I'm having trouble connecting to my brain right now. Please try again."}
         
     if current_state == config.GETTING_NAME_AND_PHONE:
-        # Pass existing data to the AI so it knows what's missing.
         existing_data_prompt = f"You already have this information about the user: {user_data}. " if user_data else ""
-
         system_prompt = f"""
         You are "Namaste-Bot" 🤖. You are collecting a user's full name and mobile number.
-        {existing_data_prompt}
-        Your task is to analyze the user's latest message and extract any new information.
+        {existing_data_prompt}Your task is to analyze the user's latest message and extract any new information.
         Your persona is friendly and forgiving of typos or different formats (e.g., +44, 07...).
-
         ## Rules & Response Format
         - A name should have at least two parts. A phone number must be a plausible UK number.
         - If the user provides information you already have, just acknowledge it.
         - If the user provides the missing piece of information, extract it.
         - Respond ONLY with a valid JSON object.
-
         ## Intents & Examples
-        1. **"PROVIDE_DETAILS"**: User provides all information at once.
-           - User says: "Jhon roose, +44 7653765316" -> `{{"intent": "PROVIDE_DETAILS", "name": "Jhon roose", "phone": "+447653765316"}}`
-
-        2. **"MISSING_INFO"**: User provides only partial information for the first time.
-           - User says: "My name is Jhon roose" -> `{{"intent": "MISSING_INFO", "name": "Jhon roose", "reply": "Thank you, Jhon roose. Could you also provide your mobile number please?"}}`
-
-        3. **"UPDATE_DETAILS"**: User provides the missing piece of information in a follow-up message.
-           - Context: You already have the name "Jhon roose".
-           - User says: "my number is 07653765316" -> `{{"intent": "UPDATE_DETAILS", "phone": "07653765316"}}`
-        
-        4. **"CHITCHAT"**: The user is making small talk.
-           - User says: "how are you" -> `{{"intent": "CHITCHAT", "reply": "I'm doing great, thanks! To continue, I'll just need your full name and mobile number please."}}`
-        """
-    elif current_state == config.GETTING_ADDRESS:
-        system_prompt = f"""
-        You are "Namaste-Bot" 🤖, an expert address parser for the UK.
-        You have asked the user for their delivery address. Their input might be messy, on multiple lines, or include extra text.
-        Your task is to extract a clean, single-line address suitable for a geocoding service.
-        - Combine multiple lines into one, separated by commas.
-        - Remove any conversational filler like "my address is".
-        - The postcode is the most important part. Ensure it's included.
-        - Respond ONLY with a valid JSON object.
-
-        ## Examples
-        - User says: "5A Smithy LN, Hounslow, TW3 1EY" -> `{{"intent": "PROVIDE_ADDRESS", "payload": "5A Smithy LN, Hounslow, TW3 1EY"}}`
-        - User says: "it's 9 Bath Road,\\nHounslow,\\nTW6 2AA,\\nEngland" -> `{{"intent": "PROVIDE_ADDRESS", "payload": "9 Bath Road, Hounslow, TW6 2AA, England"}}`
-        - User says: "can you deliver to 131 pears road, Hounslow, TW3 1SL please" -> `{{"intent": "PROVIDE_ADDRESS", "payload": "131 pears road, Hounslow, TW3 1SL"}}`
-        - User says: "how long is delivery" -> `{{"intent": "CHITCHAT", "reply": "Delivery usually takes about 30-45 minutes! But first, what is the full delivery address?"}}`
+        1. "PROVIDE_DETAILS": User provides all info at once. -> `{{"intent": "PROVIDE_DETAILS", "name": "Jhon roose", "phone": "+447653765316"}}`
+        2. "MISSING_INFO": User provides partial info for the first time. -> `{{"intent": "MISSING_INFO", "name": "Jhon roose", "reply": "Thank you, Jhon roose. Could you also provide your mobile number please?"}}`
+        3. "UPDATE_DETAILS": User provides the missing piece of information. -> `{{"intent": "UPDATE_DETAILS", "phone": "07653765316"}}`
+        4. "CHITCHAT": User makes small talk. -> `{{"intent": "CHITCHAT", "reply": "I'm doing great, thanks! To continue, I'll just need your full name and mobile number please."}}`
         """
     else: # This is the main ordering prompt
         system_prompt = f"""
-        You are "Namaste-Bot" 🤖, a friendly and witty AI waiter for "{config.RESTAURANT_NAME}".
-        Your Tool: Menu: {get_menu_as_string()}
+        You are "Namaste-Bot" 🤖, a friendly AI waiter. Your goal is to understand a user's food order.
+        Menu: {get_menu_as_string()}
         Respond ONLY with a valid JSON object with intents: "ADD_TO_ORDER", "QUERY_MENU", "CONFIRM_ORDER", "CHITCHAT".
         """
 
@@ -660,3 +629,36 @@ def get_ai_interpretation(chat_history, user_message, current_state, user_data=N
     except Exception as e:
         print(f"❌ Error during Gemini API call or JSON parsing: {e}")
         return {"intent": "ERROR", "reply": "My apologies, I got a little tangled up there. Could you please rephrase that?"}
+
+def get_distance_with_gemini(user_address: str, restaurant_address: str):
+    """
+    Uses the Gemini API to act as a powerful geocoding and distance calculation tool.
+    """
+    initialize_model()
+    if not model:
+        return {"status": "API_ERROR", "reason": "AI model not initialized."}
+
+    system_prompt = f"""
+    You are a high-precision Geospatial Calculation API. Your only task is to calculate the driving distance in miles between an origin and a destination in the UK.
+
+    ## Rules
+    1. First, attempt to geocode both the origin and destination addresses. The addresses might be messy or multi-line; clean them up as needed.
+    2. If both addresses are successfully geocoded, calculate the driving distance between them in miles.
+    3. If you cannot geocode a provided address, you must return a status of "ADDRESS_NOT_FOUND".
+    4. Respond ONLY with a valid JSON object. Do not include any other text or explanations.
+
+    ## JSON Output Format
+    - On success: `{{"status": "SUCCESS", "distance_miles": 4.2}}`
+    - On failure: `{{"status": "ADDRESS_NOT_FOUND", "reason": "Could not geocode the destination address '{user_address}'."}}`
+
+    ## Input Data
+    - Origin Address: "{restaurant_address}"
+    - Destination Address: "{user_address}"
+    """
+    try:
+        response = model.generate_content(system_prompt)
+        cleaned_response = response.text.strip().replace("```json", "").replace("```", "")
+        return json.loads(cleaned_response)
+    except Exception as e:
+        print(f"❌ Error during Gemini distance calculation: {e}")
+        return {"status": "API_ERROR", "reason": str(e)}
