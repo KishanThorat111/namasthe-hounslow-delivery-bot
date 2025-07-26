@@ -21,3 +21,16 @@ spec:
         envFrom:
           - secretRef:
               name: bot-secrets
+        # This new section tells Kubernetes how to create the file
+        volumeMounts:
+        - name: gcp-credentials-volume
+          mountPath: /app/credentials.json
+          subPath: credentials.json
+      # This new section defines the source of the file
+      volumes:
+      - name: gcp-credentials-volume
+        secret:
+          secretName: bot-secrets
+          items:
+          - key: credentials.json
+            path: credentials.json
