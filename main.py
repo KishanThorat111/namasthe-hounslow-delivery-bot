@@ -512,10 +512,7 @@
 
 
 
-
-
-
-# main.py (Final Production Version)
+# main.py (Final Production Version with Async Context Manager)
 
 import asyncio
 from telegram import Update
@@ -535,7 +532,7 @@ import database_manager as db
 import data_manager
 
 async def main() -> None:
-    """Initializes and runs both bots concurrently."""
+    """Initializes and runs both bots concurrently using async context managers."""
 
     if not all([config.TELEGRAM_TOKEN, config.RESTAURANT_BOT_TOKEN, config.GEMINI_API_KEY, config.RESTAURANT_CHAT_ID]):
         print("❌ CRITICAL ERROR: One or more required environment variables are missing.")
@@ -589,17 +586,18 @@ async def main() -> None:
 
     print("✅ Customer and Restaurant bots initialized.")
     
-    try:
-        print("🤖 Starting both bots using asyncio...")
-        # This is the standard, modern way to run multiple bots concurrently.
-        await asyncio.gather(
-            customer_app.run_polling(allowed_updates=Update.ALL_TYPES),
-            restaurant_app.run_polling(allowed_updates=Update.ALL_TYPES),
-        )
-    except (KeyboardInterrupt, SystemExit):
-        print("\n🛑 Bots shut down.")
-    except Exception as e:
-        print(f"❌ An unexpected error occurred: {e}")
+    # Using the application as an async context manager ensures that the
+    # application is properly initialized and shut down.
+    async with customer_app:
+        async with restaurant_app:
+            print("🤖 Starting both bots...")
+            await asyncio.gather(
+                customer_app.run_polling(allowed_updates=Update.ALL_TYPES),
+                restaurant_app.run_polling(allowed_updates=Update.ALL_TYPES),
+            )
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except (KeyboardInterrupt, SystemExit):
+        print("🛑 Bots shut down.")
