@@ -511,10 +511,11 @@
 
 
 
-
-# main.py (Final Production Version with Async Context Manager)
+# main.py (Final Production Version with Threading and Signal Fix)
 
 import asyncio
+import threading
+import time
 from telegram import Update
 from telegram.ext import (
     Application,
@@ -531,8 +532,21 @@ import restaurant_bot as restaurant_handlers
 import database_manager as db
 import data_manager
 
-async def main() -> None:
-    """Initializes and runs both bots concurrently using async context managers."""
+def run_bot_in_thread(application: Application) -> None:
+    """
+    Target function for a thread. Creates a new asyncio event loop
+    and runs the bot's polling function inside it.
+    """
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    
+    # The crucial change is here: stop_signals=None
+    # This tells the library not to set up its own signal handlers in this thread,
+    # preventing the "main thread" error inside Docker.
+    loop.run_until_complete(application.run_polling(allowed_updates=Update.ALL_TYPES, stop_signals=None))
+
+def main() -> None:
+    """Initializes and runs both bots in separate threads."""
 
     if not all([config.TELEGRAM_TOKEN, config.RESTAURANT_BOT_TOKEN, config.GEMINI_API_KEY, config.RESTAURANT_CHAT_ID]):
         print("❌ CRITICAL ERROR: One or more required environment variables are missing.")
@@ -586,18 +600,26 @@ async def main() -> None:
 
     print("✅ Customer and Restaurant bots initialized.")
     
-    # Using the application as an async context manager ensures that the
-    # application is properly initialized and shut down.
-    async with customer_app:
-        async with restaurant_app:
-            print("🤖 Starting both bots...")
-            await asyncio.gather(
-                customer_app.run_polling(allowed_updates=Update.ALL_TYPES),
-                restaurant_app.run_polling(allowed_updates=Update.ALL_TYPES),
-            )
+    customer_thread = threading.Thread(target=run_bot_in_thread, args=(customer_app,))
+    restaurant_thread = threading.Thread(target=run_bot_in_thread, args=(restaurant_app,))
+
+    customer_thread.daemon = True
+    restaurant_thread.daemon = True
+
+    print("🤖 Starting both bots in separate threads...")
+    
+    customer_thread.start()
+    restaurant_thread.start()
+    
+    # This loop keeps the main thread alive and allows the program to
+    # catch a KeyboardInterrupt (Ctrl+C) gracefully.
+    try:
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        print("\n🛑 Shutting down bots...")
+
+    print("✅ Program has been shut down.")
 
 if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except (KeyboardInterrupt, SystemExit):
-        print("🛑 Bots shut down.")
+    main()
